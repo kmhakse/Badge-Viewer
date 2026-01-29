@@ -35,9 +35,14 @@ data class UserResponse(
     val lastName: String,
     val email: String,
     val image: String?,
-    val badges: List<UserBadge>
+    val badges: List<UserBadge>,
+    val emailPreferences: EmailPreferences?
 )
-
+data class EmailPreferences(
+    val badgeReceived: Boolean,
+    val profileUpdate: Boolean,
+    val adminDaily: Boolean
+)
 data class UserBadge(
     val badgeId: Int,
     val name: String? = null,

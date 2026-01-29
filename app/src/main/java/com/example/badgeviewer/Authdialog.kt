@@ -31,6 +31,8 @@ import retrofit2.http.POST
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.http.*
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 
 
 
@@ -59,20 +61,19 @@ interface AuthApi {
     ): UserResponse   // ✅ not EditUserResponse
 
 
-    /* ✅ UPDATE PROFILE */
+    /* In authdialog.kt */
     @Multipart
     @PUT("user/profile")
     suspend fun updateProfile(
         @Header("Authorization") token: String,
-        @Part("firstName") firstName: RequestBody,
-        @Part("lastName") lastName: RequestBody,
-        @Part("password") password: RequestBody?,
-        @Part("newPassword") newPassword: RequestBody?,
-        @Part("badges") badges: RequestBody,              // ← RequestBody
-        @Part("emailPreferences") emailPreferences: RequestBody,  // ← RequestBody
+        @Part firstName: MultipartBody.Part,
+        @Part lastName: MultipartBody.Part,
+        @Part password: MultipartBody.Part,
+        @Part newPassword: MultipartBody.Part,
+        @Part badges: MultipartBody.Part,
+        @Part emailPreferences: MultipartBody.Part,
         @Part profileImage: MultipartBody.Part?
     ): BasicResponse
-
 
 
 
@@ -86,8 +87,20 @@ interface AuthApi {
 
 
 object AuthService {
+    // 1. Create the logger
+    private val logging = HttpLoggingInterceptor().apply {
+        level = HttpLoggingInterceptor.Level.BODY // This captures the full error message
+    }
+
+    // 2. Create the client with the logger
+    private val client = OkHttpClient.Builder()
+        .addInterceptor(logging)
+        .build()
+
+    // 3. Attach client to Retrofit
     val api: AuthApi = Retrofit.Builder()
         .baseUrl("https://profile.deepcytes.io/api/")
+        .client(client)
         .addConverterFactory(GsonConverterFactory.create())
         .build()
         .create(AuthApi::class.java)

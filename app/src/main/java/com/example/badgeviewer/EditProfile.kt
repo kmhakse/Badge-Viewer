@@ -39,11 +39,11 @@ import coil.compose.AsyncImage
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditProfileScreen(navController: NavController) {
-
     val context = LocalContext.current
     val prefs = context.getSharedPreferences("auth", Context.MODE_PRIVATE)
     val token = "Bearer " + (prefs.getString("accessToken", "") ?: "")
     val scope = rememberCoroutineScope()
+
     var badges by remember { mutableStateOf<List<UserBadge>>(emptyList()) }
     var profileImageUrl by remember { mutableStateOf<String?>(null) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
@@ -52,12 +52,13 @@ fun EditProfileScreen(navController: NavController) {
     var email by remember { mutableStateOf("") }
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
+
+    // Notification States
     var notifyBadge by remember { mutableStateOf(true) }
     var notifyProfile by remember { mutableStateOf(true) }
     var notifyAdmin by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-
         try {
             val user = AuthService.api.getUser(token)
             firstName = user.firstName
@@ -65,7 +66,17 @@ fun EditProfileScreen(navController: NavController) {
             email = user.email
             badges = user.badges
             profileImageUrl = user.image
-        } catch (e: Exception) { e.printStackTrace() }
+
+            // Fix: Use simple if-check instead of complex let to avoid type mismatch
+            val prefs = user.emailPreferences
+            if (prefs != null) {
+                notifyBadge = prefs.badgeReceived
+                notifyProfile = prefs.profileUpdate
+                notifyAdmin = prefs.adminDaily
+            }
+        } catch (e: Exception) {
+            Log.e("FETCH_USER", "Failed", e)
+        }
     }
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -78,48 +89,35 @@ fun EditProfileScreen(navController: NavController) {
             .verticalScroll(rememberScrollState())
             .padding(20.dp)
     ) {
-
         Text("Edit Profile", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(24.dp))
 
+        // Profile Image Section
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier.size(90.dp).clip(CircleShape).background(Color(0xFF2F80FF)),
                 contentAlignment = Alignment.Center
             ) {
                 if (selectedImageUri != null) {
-                    AsyncImage(
-                        model = selectedImageUri,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+                    AsyncImage(model = selectedImageUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 } else if (profileImageUrl != null) {
-                    AsyncImage(
-                        model = "https://profile.deepcytes.io/api$profileImageUrl?t=${System.currentTimeMillis()}",
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+                    AsyncImage(model = "https://profile.deepcytes.io/api$profileImageUrl", contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 } else {
-                    Text(
-                        (firstName.take(1) + lastName.take(1)).uppercase(),
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text((firstName.take(1) + lastName.take(1)).uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
                 }
-
             }
-
             Spacer(Modifier.width(16.dp))
             Button(onClick = { imagePicker.launch("image/*") }) { Text("Upload") }
-
             Spacer(Modifier.width(10.dp))
             Button(
                 onClick = {
                     scope.launch {
-                        AuthService.api.removeProfileImage(token)
-                        selectedImageUri = null
+                        try {
+                            AuthService.api.removeProfileImage(token)
+                            selectedImageUri = null
+                            profileImageUrl = null
+                            Toast.makeText(context, "Image Removed", Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) { e.printStackTrace() }
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
@@ -132,15 +130,11 @@ fun EditProfileScreen(navController: NavController) {
         Spacer(Modifier.height(14.dp))
         Row {
             Column(Modifier.weight(1f)) {
-                Label("First Name"); InputField(firstName) {
-                firstName = it
-            }
+                Label("First Name"); InputField(firstName) { firstName = it }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Label("Last Name"); InputField(lastName) {
-                lastName = it
-            }
+                Label("Last Name"); InputField(lastName) { lastName = it }
             }
         }
 
@@ -150,7 +144,7 @@ fun EditProfileScreen(navController: NavController) {
         Label("New password"); PasswordField(newPassword) { newPassword = it }
 
         Spacer(Modifier.height(22.dp))
-        Text("*Visible Badges", color = Color.White.copy(.6f))
+        Text("*Visible Badges", color = Color.White.copy(.6f), fontSize = 12.sp)
 
         badges.forEachIndexed { index, badge ->
             ToggleRow(badge.name ?: "Badge ${badge.badgeId}", badge.isPublic) { newValue ->
@@ -168,72 +162,51 @@ fun EditProfileScreen(navController: NavController) {
 
         Spacer(Modifier.height(26.dp))
 
-        // ... (this follows your notification checkboxes)
-        Spacer(Modifier.height(26.dp))
-
         Button(
             onClick = {
                 scope.launch {
-                    // --- 1. VALIDATION ---
-                    // If the user typed anything in "New Password", check the rules
-                    if (newPassword.isNotBlank()) {
-                        if (currentPassword.isBlank()) {
-                            Toast.makeText(context, "Enter current password", Toast.LENGTH_SHORT).show()
-                            return@launch
-                        }
-                        if (newPassword.length < 8) {
-                            Toast.makeText(context, "Password must be at least 8 characters", Toast.LENGTH_SHORT).show()
-                            return@launch
-                        }
-                    }
-
                     try {
-                        // --- 2. PREPARE JSON STRINGS ---
-                        // Ensure badgeId is wrapped in quotes for valid JSON
+                        // 1. Prepare JSON Strings (Matches JS JSON.stringify)
+                        // Note: Removed spaces to match strict backend parsing
                         val badgesJson = badges.joinToString(prefix = "[", postfix = "]") {
                             """{"badgeId":"${it.badgeId}","isPublic":${it.isPublic}}"""
                         }
 
-                        val emailPrefsJson = """
-                        {
-                          "badgeReceived": $notifyBadge,
-                          "profileUpdate": $notifyProfile,
-                          "adminDaily": $notifyAdmin
+                        val emailPrefsJson = """{"badgeReceived":$notifyBadge,"profileUpdate":$notifyProfile,"adminDaily":$notifyAdmin}"""
+
+                        // 2. Helper to create Parts WITHOUT extra content-type headers (Matches JS FormData.append)
+                        fun String.toPart(name: String): MultipartBody.Part {
+                            return MultipartBody.Part.createFormData(name, this)
                         }
-                        """.trimIndent()
 
-                        // --- 3. CONVERT TO REQUEST BODIES ---
-                        val first = firstName.toRequestBody("text/plain".toMediaTypeOrNull())
-                        val last = lastName.toRequestBody("text/plain".toMediaTypeOrNull())
+                        // 3. Create all required parts
+                        val firstPart = firstName.toPart("firstName")
+                        val lastPart = lastName.toPart("lastName")
+                        val passwordPart = currentPassword.toPart("password")
+                        val newPassPart = newPassword.toPart("newPassword")
+                        val badgesPart = badgesJson.toPart("badges")
+                        val prefsPart = emailPrefsJson.toPart("emailPreferences")
 
-                        // Use the logic: only send passwords if BOTH are filled
-                        val passwordBody = if (currentPassword.isNotBlank() && newPassword.isNotBlank()) {
-                            currentPassword.toRequestBody("text/plain".toMediaTypeOrNull())
-                        } else null
-
-                        val newPasswordBody = if (currentPassword.isNotBlank() && newPassword.isNotBlank()) {
-                            newPassword.toRequestBody("text/plain".toMediaTypeOrNull())
-                        } else null
-
-                        val badgesBody = badgesJson.toRequestBody("application/json".toMediaTypeOrNull())
-                        val emailPrefsBody = emailPrefsJson.toRequestBody("application/json".toMediaTypeOrNull())
                         val imagePart = selectedImageUri?.let { uriToMultipart(context, it) }
 
-                        // --- 4. API CALL ---
+                        // 4. API CALL
                         val response = AuthService.api.updateProfile(
-                            token, first, last, passwordBody, newPasswordBody, badgesBody, emailPrefsBody, imagePart
+                            token = token,
+                            firstName = firstPart,
+                            lastName = lastPart,
+                            password = passwordPart,
+                            newPassword = newPassPart,
+                            badges = badgesPart,
+                            emailPreferences = prefsPart,
+                            profileImage = imagePart
                         )
 
                         Toast.makeText(context, response.message, Toast.LENGTH_LONG).show()
-
-                        // Clear sensitive fields and navigate back
-                        currentPassword = ""
-                        newPassword = ""
                         navController.popBackStack()
 
                     } catch (e: Exception) {
                         Log.e("PROFILE_UPDATE", "Detailed Error: ${e.message}", e)
-                        Toast.makeText(context, "Update failed: check console", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Update failed. Check credentials/password.", Toast.LENGTH_LONG).show()
                     }
                 }
             },
@@ -243,11 +216,8 @@ fun EditProfileScreen(navController: NavController) {
             Spacer(Modifier.width(8.dp))
             Text("Confirm")
         }
-
-    }  // closes Column
-
-}  // closes EditProfileScreen
-
+    }
+}
 @Composable fun Label(text: String) =
     Text(text, color = Color.White.copy(0.7f), fontSize = 14.sp)
 

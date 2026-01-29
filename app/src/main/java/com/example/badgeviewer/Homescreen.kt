@@ -608,7 +608,7 @@ fun TopHeaderBar(
             Spacer(Modifier.width(8.dp))
 
             Image(
-                painter = painterResource(R.drawable.img_4),
+                painter = painterResource(R.drawable.dc),
                 contentDescription = null,
                 modifier = Modifier.height(32.dp)
             )
@@ -724,7 +724,7 @@ fun FooterSection() {
             .padding(24.dp)
     ) {
         Image(
-            painter = painterResource(R.drawable.img_4),
+            painter = painterResource(R.drawable.dc),
             contentDescription = null,
             modifier = Modifier.height(36.dp)
         )
@@ -732,7 +732,7 @@ fun FooterSection() {
         Spacer(Modifier.height(24.dp))
 
         Text(
-            "© 2025 DeepCytes. All Rights Reserved.",
+            "© 2026 DeepCytes. All Rights Reserved.",
             color = Color.White.copy(0.5f),
             fontSize = 12.sp,
             modifier = Modifier.align(Alignment.CenterHorizontally)

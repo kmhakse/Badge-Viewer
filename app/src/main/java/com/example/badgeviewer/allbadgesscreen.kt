@@ -1,6 +1,7 @@
 package com.example.badgeviewer
 import androidx.compose.material.icons.filled.Lock
 import android.content.Context
+import android.util.Log
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +30,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.ui.layout.ContentScale
 import retrofit2.http.Header
 
 /* ===================== TOP BAR ===================== */
@@ -46,6 +48,7 @@ data class BadgeDto(
 @Composable
 fun BadgesTopBar(
     navController: NavController,
+    profileImage: String?, // ✅ Add this
     onMenuClick: () -> Unit,
     onLoginClick: () -> Unit
 ) {
@@ -60,15 +63,10 @@ fun BadgesTopBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFF02060C), Color(0xFF00040A))
-                    )
-                )
+                .background(Brush.verticalGradient(listOf(Color(0xFF02060C), Color(0xFF00040A))))
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-
             IconButton(onClick = onMenuClick) {
                 Icon(Icons.Default.Menu, null, tint = Color.White)
             }
@@ -79,17 +77,22 @@ fun BadgesTopBar(
                 Box(
                     modifier = Modifier
                         .size(40.dp)
+                        .clip(CircleShape) // Ensure clipping for the image
                         .background(Color(0xFF2F80FF), CircleShape)
-                        .clickable {
-                            navController.navigate("profile")
-                        },
+                        .clickable { navController.navigate("profile") },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = initials,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
+                    // ✅ Profile Image Logic
+                    if (profileImage != null) {
+                        AsyncImage(
+                            model = "https://profile.deepcytes.io/api$profileImage?t=${System.currentTimeMillis()}",
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Text(text = initials, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             } else {
                 OutlinedButton(
@@ -175,37 +178,38 @@ fun AllBadgesScreen(
     var loading by remember { mutableStateOf(true) }
     var allBadges by remember { mutableStateOf<List<BadgeDto>>(emptyList()) }
     var myBadges by remember { mutableStateOf<List<BadgeDto>>(emptyList()) }
-
-    val token = context
-        .getSharedPreferences("auth", Context.MODE_PRIVATE)
-        .getString("accessToken", null)
+    var profileImage by remember { mutableStateOf<String?>(null) } // ✅ State for profile
+    val prefs = context.getSharedPreferences("auth", Context.MODE_PRIVATE)
+    val token = prefs.getString("accessToken", null)
 
     LaunchedEffect(Unit) {
         try {
-            // Public API → always allowed
+            loading = true
+
+            // 1. Fetch Public Data (Always)
             allBadges = ApiClient.api.getAllBadges().badges
 
-            // Private API → only if token exists
+            // 2. Fetch Private Data (Only if logged in)
             if (!token.isNullOrEmpty()) {
-                myBadges = ApiClient.api.getMyBadges("Bearer $token").badges
+                val bearerToken = "Bearer $token"
+
+                // Fetch User profile (for the TopBar image)
+                try {
+                    val user = ProfileApiClient.api.getUser(bearerToken)
+                    profileImage = user.image
+                } catch (e: Exception) {
+                    Log.e("FETCH_PROFILE", "Failed to load profile image", e)
+                }
+
+                // Fetch Earned Badges
+                myBadges = ApiClient.api.getMyBadges(bearerToken).badges
             }
 
         } catch (e: retrofit2.HttpException) {
-
             if (e.code() == 401) {
-                // 🔥 TOKEN EXPIRED / INVALID
-
-                context.getSharedPreferences("auth", Context.MODE_PRIVATE)
-                    .edit()
-                    .clear()
-                    .apply()
-
-                // Go back to home safely
-                navController.navigate("home") {
-                    popUpTo(0)
-                }
+                prefs.edit().clear().apply()
+                navController.navigate("home") { popUpTo(0) }
             }
-
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
@@ -253,14 +257,11 @@ fun AllBadgesScreen(
 
                 BadgesTopBar(
                     navController = navController,
+                    profileImage = profileImage, // ✅ Pass the URL
                     onMenuClick = { scope.launch { drawerState.open() } },
-                    onLoginClick = {
-                        navController.navigate("login") {
-                            launchSingleTop = true
-                        }
-                    }
-
+                    onLoginClick = { navController.navigate("login") { launchSingleTop = true } }
                 )
+
 
 
                 LazyColumn(
@@ -563,7 +564,7 @@ fun BadgesFooterSection() {
 
         // ───── LOGO ─────
         Image(
-            painter = painterResource(R.drawable.img_4),
+            painter = painterResource(R.drawable.dc),
             contentDescription = "DeepCytes Logo",
             modifier = Modifier.height(48.dp)
         )
@@ -616,7 +617,7 @@ fun BadgesFooterSection() {
 
         // ───── COPYRIGHT ─────
         Text(
-            text = "© 2025 DeepCytes. All Rights Reserved.",
+            text = "© 2026 DeepCytes. All Rights Reserved.",
             color = Color.White.copy(alpha = 0.55f),
             fontSize = 13.sp,
             modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -629,11 +630,12 @@ fun BadgesFooterSection() {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center
         ) {
-            SocialIcon(R.drawable.ic_instagram)
+            SocialIcon(R.drawable.instagram)
             Spacer(Modifier.width(18.dp))
-            SocialIcon(R.drawable.ic_twitter)
+            SocialIcon(R.drawable.twitter)
             Spacer(Modifier.width(18.dp))
-            SocialIcon(R.drawable.ic_globe)
+            SocialIcon(R.drawable.globe)
+
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.example.badgeviewer
 
+import android.content.Context
+import android.util.Log
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -14,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -52,30 +55,45 @@ object BadgeDetailApiClient {
 /* ===================== SCREEN ===================== */
 @Composable
 fun IndividualBadgeScreen(navController: NavController) {
-
+    val context = LocalContext.current
     val backStackEntry = navController.currentBackStackEntryAsState()
     val startId = backStackEntry.value?.arguments?.getString("id")?.toIntOrNull() ?: return
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val prefs = remember { context.getSharedPreferences("auth", Context.MODE_PRIVATE) }
+    val token = prefs.getString("accessToken", null)
 
+    // States
     var badges by remember { mutableStateOf<List<BadgeDto>>(emptyList()) }
     var index by remember { mutableStateOf(0) }
     var earners by remember { mutableStateOf("N/A") }
     var loading by remember { mutableStateOf(true) }
+    var profileImage by remember { mutableStateOf<String?>(null) } // ✅ Added for TopBar
 
     LaunchedEffect(startId) {
         try {
             loading = true
+            val bearerToken = if (token != null) "Bearer $token" else null
 
-            // 1️⃣ Fetch all badges
+            // 1️⃣ Fetch Profile Image (If logged in)
+            if (bearerToken != null) {
+                try {
+                    val user = ProfileApiClient.api.getUser(bearerToken)
+                    profileImage = user.image
+                } catch (e: Exception) {
+                    Log.e("FETCH_PROFILE", "Failed to load profile image", e)
+                }
+            }
+
+            // 2️⃣ Fetch all badges
             val response = BadgeDetailApiClient.api.getAllBadges()
             badges = response.badges
 
             index = badges.indexOfFirst { it.id == startId }
                 .takeIf { it >= 0 } ?: 0
 
-            // 2️⃣ Fetch earners safely
+            // 3️⃣ Fetch earners safely for the specific badge
             earners = try {
                 BadgeDetailApiClient.api
                     .getEarners(badges[index].id)
@@ -86,22 +104,12 @@ fun IndividualBadgeScreen(navController: NavController) {
             }
 
         } catch (e: retrofit2.HttpException) {
-
-            // 🔐 TOKEN EXPIRED / UNAUTHORIZED
             if (e.code() == 401) {
-                navController.navigate("home") {
-                    popUpTo(0)
-                }
+                prefs.edit().clear().apply()
+                navController.navigate("home") { popUpTo(0) }
             }
-
-        } catch (e: java.net.SocketTimeoutException) {
-            // 🌐 NETWORK TOO SLOW
-            earners = "—"
-
         } catch (e: Exception) {
-            // 🧯 ANY OTHER FAILURE
             e.printStackTrace()
-
         } finally {
             loading = false
         }
@@ -147,13 +155,11 @@ fun IndividualBadgeScreen(navController: NavController) {
             /* ───── HEADER (SAME AS ALL BADGES) ───── */
             BadgesTopBar(
                 navController = navController,
+                profileImage = profileImage, // ✅ Pass the fetched image URL
                 onMenuClick = { scope.launch { drawerState.open() } },
                 onLoginClick = {
-                    navController.navigate("login") {
-                        launchSingleTop = true
-                    }
+                    navController.navigate("login") { launchSingleTop = true }
                 }
-
             )
 
 

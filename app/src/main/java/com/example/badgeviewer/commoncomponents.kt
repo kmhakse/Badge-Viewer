@@ -1,6 +1,7 @@
 package com.example.badgeviewer
 
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Icon
@@ -36,14 +37,15 @@ fun FooterItem(text: String) {
 }
 
 @Composable
-fun SocialIcon(icon: Int) {
-    IconButton(onClick = {}) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.8f),
-            modifier = Modifier.size(22.dp)
-        )
-    }
+fun SocialIcon(imageRes: Int) {
+    Image(
+        painter = painterResource(id = imageRes),
+        contentDescription = null,
+        modifier = Modifier
+            .size(22.dp)
+            .clickable { /* open link later */ }
+    )
 }
+
+
 

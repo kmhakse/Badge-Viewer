@@ -45,6 +45,7 @@ dependencies {
     implementation("androidx.compose.foundation:foundation-layout")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.runtime:runtime-livedata")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
 // Networking
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
